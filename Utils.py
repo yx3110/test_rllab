@@ -2,26 +2,28 @@ import subprocess
 
 import time
 
-import hfo_py
-from hfo import *
+from rllab.core.serializable import Serializable
+from hfo_py import *
 import numpy as np
 from rllab.envs import base
 from rllab import spaces
+
 kPassVelThreshold = -.5
 
 
-class hfoENV(base.Env):
+class hfoENV(base.Env, Serializable):
     def __init__(self):
         super(hfoENV, self)
         self.viewer = None
         self.server_process = None
         self.server_port = None
-        self.hfo_path = hfo_py.get_hfo_path()
+        self.hfo_path = get_hfo_path()
         self.configure()
-        self.env = hfo_py.HFOEnvironment()
-        self.env.connectToServer(feature_set=LOW_LEVEL_FEATURE_SET, config_dir=hfo_py.get_config_path(),
+        self.env = HFOEnvironment()
+        self.env.connectToServer(feature_set=LOW_LEVEL_FEATURE_SET, config_dir=get_config_path(),
                                  server_port=6001)
-        self.game_info = GameInfo(1)
+        self.game_info = GameInfo(self.env.getUnum())
+        Serializable.quick_init(self, locals())
 
     def configure(self, *args, **kwargs):
         self._start_hfo_server()
@@ -36,12 +38,14 @@ class hfoENV(base.Env):
 
     @property
     def action_space(self):
-        return spaces.Product((spaces.Discrete(3),
-                             spaces.Box(low=0, high=100, shape=1),
-                             spaces.Box(low=-180, high=180, shape=1),
-                             spaces.Box(low=-180, high=180, shape=1),
-                             spaces.Box(low=0, high=100, shape=1),
-                             spaces.Box(low=-180, high=180, shape=1)))
+        return spaces.Product((spaces.Box(low=-1, high=1, shape=1),
+                               spaces.Box(low=-1, high=1, shape=1),
+                               spaces.Box(low=-1, high=1, shape=1),
+                               spaces.Box(low=0, high=100, shape=1),
+                               spaces.Box(low=-180, high=180, shape=1),
+                               spaces.Box(low=-180, high=180, shape=1),
+                               spaces.Box(low=0, high=100, shape=1),
+                               spaces.Box(low=-180, high=180, shape=1)))
 
     @property
     def observation_space(self):
@@ -53,7 +57,7 @@ class hfoENV(base.Env):
         used with a *.rcg logfile to replay a game. See details at
         https://github.com/LARG/HFO/blob/master/doc/manual.pdf.
         """
-        cmd = hfo_py.get_viewer_path() + \
+        cmd = get_viewer_path() + \
               " --connect --port %d" % (self.server_port)
         self.viewer = subprocess.Popen(cmd.split(' '), shell=False)
 
@@ -103,18 +107,18 @@ class hfoENV(base.Env):
 
     def take_action(self, action):
         action_type = ACTION_LOOKUP[action[0]]
-        if action_type == hfo_py.DASH:
+        if action_type == DASH:
             self.env.act(action_type, action[1], action[2])
-            print(str(action_type) + ' ' + str(action[1]) + ' ' + str(action[2]))
-        elif action_type == hfo_py.TURN:
+            # print(str(action_type)+','+str(action[1])+','+str(action[2]))
+        elif action_type == TURN:
             self.env.act(action_type, action[3])
-            print(str(action_type) + ' ' + str(action[3]))
-        elif action_type == hfo_py.KICK:
+            # print(str(action_type) + ',' + str(action[3]))
+        elif action_type == KICK:
             self.env.act(action_type, action[4], action[5])
-            print(str(action_type) + ' ' + str(action[4]) + ' ' + str(action[5]))
+            # print(str(action_type) + ',' + str(action[4]) + ',' + str(action[5]))
         else:
             print('Unrecognized action %d' % action_type)
-            self.env.act(hfo_py.NOOP)
+            self.env.act(NOOP)
 
         return self.game_info.update(self.env)
 
@@ -203,7 +207,6 @@ class GameInfo:
 
     def update(self, hfo_env):
         self.status = hfo_env.step()
-        print('status: ' + str(self.episode_over))
         if self.status != IN_GAME:
             self.episode_over = True
         cur_obs = hfo_env.getState()
@@ -245,7 +248,7 @@ class GameInfo:
         self.prev_player_on_ball = self.player_on_ball
         self.player_on_ball = hfo_env.playerOnBall()
         self.steps += 1
-        return cur_obs, self.get_reward(), self.episode_over, None
+        return cur_obs, self.get_reward(), self.episode_over, {}
 
     def get_reward(self):
         res = 0
@@ -284,9 +287,9 @@ class GameInfo:
 
 
 ACTION_LOOKUP = {
-    0: hfo_py.DASH,
-    1: hfo_py.TURN,
-    2: hfo_py.KICK,
-    3: hfo_py.TACKLE,  # Used on defense to slide tackle the ball
-    4: hfo_py.CATCH,  # Used only by goalie to catch the ball
+    0: DASH,
+    1: TURN,
+    2: KICK,
+    3: TACKLE,  # Used on defense to slide tackle the ball
+    4: CATCH,  # Used only by goalie to catch the ball
 }
